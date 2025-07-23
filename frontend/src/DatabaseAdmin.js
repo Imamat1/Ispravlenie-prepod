@@ -119,6 +119,29 @@ const DatabaseAdmin = () => {
     }
   };
 
+  // Translate token
+  const translateToken = async () => {
+    if (!tokenToTranslate.trim()) {
+      setError('Введите токен для анализа');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await apiCall('/admin/database/translate-token', {
+        method: 'POST',
+        body: JSON.stringify({ token: tokenToTranslate })
+      });
+      
+      setTokenResult(result);
+      setError('');
+    } catch (error) {
+      setError(`Ошибка анализа токена: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'overview') {
       loadDatabaseOverview();
