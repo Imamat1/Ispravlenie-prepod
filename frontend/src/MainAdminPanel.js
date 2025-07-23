@@ -325,6 +325,8 @@ const MainAdminPanel = () => {
         return <ApplicationManagement />;
       case 'reports':
         return <ReportsComponent />;
+      case 'database':
+        return <DatabaseAdmin />;
       default:
         return <AdminDashboard />;
     }
