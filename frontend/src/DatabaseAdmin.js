@@ -639,6 +639,7 @@ const DatabaseAdmin = () => {
           {activeTab === 'overview' && (
             <>
               {renderConnectionInfo()}
+              {renderSupabaseInfo()}
               {renderDatabaseStats()}
               {renderTablesList()}
             </>
@@ -646,6 +647,7 @@ const DatabaseAdmin = () => {
           
           {activeTab === 'table-data' && renderTableData()}
           {activeTab === 'sql-console' && renderSqlConsole()}
+          {activeTab === 'token-analyzer' && renderTokenAnalyzer()}
         </div>
       )}
     </div>
