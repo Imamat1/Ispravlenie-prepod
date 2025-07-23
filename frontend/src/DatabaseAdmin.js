@@ -183,6 +183,72 @@ const DatabaseAdmin = () => {
     </div>
   );
 
+  // Render Supabase info
+  const renderSupabaseInfo = () => (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4">Информация о проекте Supabase</h3>
+      {supabaseInfo && (
+        <div className="space-y-3">
+          <div className="flex justify-between">
+            <span className="font-medium">URL проекта:</span>
+            <span className="text-sm text-blue-600 break-all">{supabaseInfo.project_url}</span>
+          </div>
+          
+          {adminData?.role === 'super_admin' && (
+            <>
+              {supabaseInfo.project_id && (
+                <div className="flex justify-between">
+                  <span className="font-medium">ID проекта:</span>
+                  <span className="text-sm font-mono text-gray-600">{supabaseInfo.project_id}</span>
+                </div>
+              )}
+              
+              {supabaseInfo.dashboard_url && (
+                <div className="flex justify-between">
+                  <span className="font-medium">Ссылка на дашборд:</span>
+                  <a 
+                    href={supabaseInfo.dashboard_url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 text-sm underline"
+                  >
+                    Открыть дашборд Supabase
+                  </a>
+                </div>
+              )}
+              
+              {supabaseInfo.key_preview && (
+                <div className="flex justify-between">
+                  <span className="font-medium">Anon Key:</span>
+                  <span className="text-xs text-gray-500 font-mono">{supabaseInfo.key_preview}</span>
+                </div>
+              )}
+            </>
+          )}
+          
+          <div className="flex justify-between">
+            <span className="font-medium">Режим подключения:</span>
+            <span className={supabaseInfo.use_postgres ? "text-blue-600" : "text-green-600"}>
+              {supabaseInfo.use_postgres ? "PostgreSQL прямое" : "Supabase API"}
+            </span>
+          </div>
+          
+          <div className="border-t pt-3">
+            <span className="font-medium block mb-2">Доступные клиенты:</span>
+            <div className="flex gap-4">
+              <span className={`px-2 py-1 rounded text-sm ${supabaseInfo.clients_available.supabase ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                Supabase: {supabaseInfo.clients_available.supabase ? 'Доступен' : 'Недоступен'}
+              </span>
+              <span className={`px-2 py-1 rounded text-sm ${supabaseInfo.clients_available.postgres ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                PostgreSQL: {supabaseInfo.clients_available.postgres ? 'Доступен' : 'Недоступен'}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
   // Render database statistics
   const renderDatabaseStats = () => (
     <div className="bg-white rounded-lg shadow p-6">
