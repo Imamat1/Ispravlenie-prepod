@@ -48,15 +48,17 @@ const DatabaseAdmin = () => {
   const loadDatabaseOverview = async () => {
     setLoading(true);
     try {
-      const [statsData, tablesData, connectionData] = await Promise.all([
+      const [statsData, tablesData, connectionData, supabaseData] = await Promise.all([
         apiCall('/admin/database/stats'),
         apiCall('/admin/database/tables'),
-        apiCall('/admin/database/connection-info')
+        apiCall('/admin/database/connection-info'),
+        apiCall('/admin/database/supabase-info')
       ]);
       
       setDbStats(statsData);
       setTables(tablesData);
       setConnectionInfo(connectionData);
+      setSupabaseInfo(supabaseData);
       setError('');
     } catch (error) {
       setError(`Ошибка загрузки данных: ${error.message}`);
