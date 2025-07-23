@@ -241,6 +241,7 @@ const AdminLayout = ({ children, currentPage, setCurrentPage }) => {
     { id: 'teachers', name: 'Преподаватели', icon: '👨‍🏫' },
     { id: 'applications', name: 'Заявки', icon: '📋' },
     { id: 'reports', name: 'Отчеты', icon: '📈' },
+    { id: 'database', name: 'База данных', icon: '🗄️' },
   ];
 
   const handleLogout = () => {
