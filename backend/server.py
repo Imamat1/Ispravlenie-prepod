@@ -173,6 +173,412 @@ async def root():
     client_type = "PostgreSQL" if USE_POSTGRES and POSTGRES_AVAILABLE else "Supabase"
     return {"message": f"Hello World with {client_type}"}
 
+# Database Administration Routes
+@api_router.get("/admin/database/tables", response_model=List[Dict[str, Any]])
+async def get_database_tables(current_admin: dict = Depends(get_current_admin)):
+    """Получить список всех таблиц в базе данных"""
+    try:
+        if USE_POSTGRES and POSTGRES_AVAILABLE:
+            # Для PostgreSQL получаем через information_schema
+            query = """
+            SELECT table_name, table_type 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            ORDER BY table_name;
+            """
+            result = await db_client.execute_raw_sql(query)
+            tables = []
+            for row in result:
+                table_name = row.get('table_name')
+                # Получаем количество записей в каждой таблице
+                count_query = f"SELECT COUNT(*) as count FROM {table_name};"
+                count_result = await db_client.execute_raw_sql(count_query)
+                count = count_result[0]['count'] if count_result else 0
+                
+                tables.append({
+                    "name": table_name,
+                    "type": row.get('table_type', 'BASE TABLE'),
+                    "record_count": count
+                })
+            return tables
+        else:
+            # Для Supabase API получаем список известных таблиц
+            known_tables = [
+                "courses", "lessons", "tests", "test_questions", "test_attempts",
+                "students", "admin_users", "teachers", "team_members",
+                "qa_questions", "qa_categories", "applications", "status_checks"
+            ]
+            tables = []
+            for table_name in known_tables:
+                try:
+                    count = await db_client.count_records(table_name)
+                    tables.append({
+                        "name": table_name,
+                        "type": "BASE TABLE",
+                        "record_count": count
+                    })
+                except Exception as e:
+                    # Таблица может не существовать
+                    continue
+            return tables
+    except Exception as e:
+        logger.error(f"Error getting database tables: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@api_router.get("/admin/database/table/{table_name}", response_model=Dict[str, Any])
+async def get_table_data(
+    table_name: str, 
+    limit: int = 100, 
+    offset: int = 0,
+    current_admin: dict = Depends(get_current_admin)
+):
+    """Получить данные из конкретной таблицы"""
+    try:
+        # Получаем данные из таблицы
+        if USE_POSTGRES and POSTGRES_AVAILABLE:
+            query = f"SELECT * FROM {table_name} LIMIT {limit} OFFSET {offset};"
+            records = await db_client.execute_raw_sql(query)
+            
+            # Получаем общее количество записей
+            count_query = f"SELECT COUNT(*) as count FROM {table_name};"
+            count_result = await db_client.execute_raw_sql(count_query)
+            total_count = count_result[0]['count'] if count_result else 0
+            
+            # Получаем структуру таблицы
+            structure_query = f"""
+            SELECT column_name, data_type, is_nullable, column_default
+            FROM information_schema.columns 
+            WHERE table_name = '{table_name}' AND table_schema = 'public'
+            ORDER BY ordinal_position;
+            """
+            structure = await db_client.execute_raw_sql(structure_query)
+        else:
+            # Для Supabase API
+            records = await db_client.get_records(table_name, limit=limit)
+            # Пропускаем offset записей
+            if offset > 0:
+                all_records = await db_client.get_records(table_name)
+                records = all_records[offset:offset+limit] if offset < len(all_records) else []
+            
+            total_count = await db_client.count_records(table_name)
+            
+            # Получаем структуру из первой записи (приблизительно)
+            structure = []
+            if records:
+                for key, value in records[0].items():
+                    data_type = type(value).__name__
+                    structure.append({
+                        "column_name": key,
+                        "data_type": data_type,
+                        "is_nullable": "YES",
+                        "column_default": None
+                    })
+        
+        return {
+            "table_name": table_name,
+            "records": records,
+            "total_count": total_count,
+            "current_page": offset // limit + 1 if limit > 0 else 1,
+            "per_page": limit,
+            "structure": structure
+        }
+    except Exception as e:
+        logger.error(f"Error getting table data for {table_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@api_router.post("/admin/database/query")
+async def execute_sql_query(
+    query_data: Dict[str, str],
+    current_admin: dict = Depends(require_admin_role)
+):
+    """Выполнить произвольный SQL запрос (только для супер-админов)"""
+    try:
+        query = query_data.get("query", "").strip()
+        if not query:
+            raise HTTPException(status_code=400, detail="Query cannot be empty")
+        
+        # Базовая проверка безопасности
+        dangerous_keywords = ["DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE"]
+        query_upper = query.upper()
+        
+        # Разрешаем только SELECT запросы для обычных админов
+        if current_admin.get("role") != UserRole.SUPER_ADMIN:
+            if not query_upper.startswith("SELECT"):
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Only SELECT queries are allowed for regular admins"
+                )
+        
+        # Дополнительная проверка для опасных операций
+        for keyword in dangerous_keywords:
+            if keyword in query_upper and not query_upper.startswith("SELECT"):
+                if current_admin.get("role") != UserRole.SUPER_ADMIN:
+                    raise HTTPException(
+                        status_code=403, 
+                        detail=f"'{keyword}' operations require super admin privileges"
+                    )
+        
+        result = await db_client.execute_raw_sql(query)
+        
+        return {
+            "success": True,
+            "query": query,
+            "result": result,
+            "row_count": len(result) if result else 0
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error executing SQL query: {str(e)}")
+        return {
+            "success": False,
+            "query": query,
+            "error": str(e),
+            "result": []
+        }
+
+@api_router.get("/admin/database/stats")
+async def get_database_stats(current_admin: dict = Depends(get_current_admin)):
+    """Получить общую статистику базы данных"""
+    try:
+        stats = {}
+        
+        # Основные таблицы для статистики
+        main_tables = {
+            "students": "Студенты",
+            "courses": "Курсы", 
+            "lessons": "Уроки",
+            "tests": "Тесты",
+            "test_attempts": "Попытки тестов",
+            "admin_users": "Администраторы",
+            "team_members": "Команда",
+            "qa_questions": "Вопросы Q&A"
+        }
+        
+        for table_name, display_name in main_tables.items():
+            try:
+                count = await db_client.count_records(table_name)
+                stats[table_name] = {
+                    "name": display_name,
+                    "count": count
+                }
+            except Exception:
+                stats[table_name] = {
+                    "name": display_name,
+                    "count": 0
+                }
+        
+        # Дополнительная статистика
+        try:
+            # Активные студенты
+            active_students = await db_client.count_records("students", {"is_active": True})
+            stats["active_students"] = {
+                "name": "Активные студенты",
+                "count": active_students
+            }
+            
+            # Опубликованные курсы
+            published_courses = await db_client.count_records("courses", {"status": CourseStatus.PUBLISHED})
+            stats["published_courses"] = {
+                "name": "Опубликованные курсы", 
+                "count": published_courses
+            }
+        except Exception:
+            pass
+        
+        return {
+            "database_type": "PostgreSQL via Supabase" if USE_POSTGRES else "Supabase API",
+            "connection_status": "connected",
+            "stats": stats,
+            "last_updated": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting database stats: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+@api_router.post("/admin/database/backup")
+async def create_database_backup(current_admin: dict = Depends(require_admin_role)):
+    """Создать резервную копию важных данных"""
+    try:
+        backup_data = {}
+        
+        # Список таблиц для резервного копирования
+        backup_tables = [
+            "courses", "lessons", "tests", "test_questions",
+            "students", "admin_users", "team_members", "qa_questions"
+        ]
+        
+        for table_name in backup_tables:
+            try:
+                records = await db_client.get_records(table_name, limit=10000)
+                backup_data[table_name] = records
+            except Exception as e:
+                logger.warning(f"Could not backup table {table_name}: {str(e)}")
+        
+        # Создаем файл резервной копии
+        backup_filename = f"database_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        backup_path = UPLOAD_DIR / backup_filename
+        
+        with open(backup_path, 'w', encoding='utf-8') as f:
+            json.dump(backup_data, f, ensure_ascii=False, indent=2, default=str)
+        
+        return {
+            "success": True,
+            "backup_file": backup_filename,
+            "backup_path": str(backup_path),
+            "tables_backed_up": list(backup_data.keys()),
+            "total_records": sum(len(records) for records in backup_data.values()),
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating database backup: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Backup error: {str(e)}")
+
+@api_router.get("/admin/database/connection-info")
+async def get_connection_info(current_admin: dict = Depends(get_current_admin)):
+    """Получить информацию о подключении к базе данных"""
+    try:
+        connection_info = {
+            "database_type": "PostgreSQL via Supabase" if USE_POSTGRES else "Supabase API",
+            "use_postgres": USE_POSTGRES,
+            "supabase_url": os.getenv("SUPABASE_URL", "Not set"),
+            "has_supabase_key": bool(os.getenv("SUPABASE_ANON_KEY")),
+            "has_database_url": bool(os.getenv("DATABASE_URL")),
+            "connection_status": "connected",
+            "clients_available": {
+                "postgres": POSTGRES_AVAILABLE,
+                "supabase": SUPABASE_AVAILABLE
+            }
+        }
+        
+        # Скрываем чувствительную информацию от обычных админов
+        if current_admin.get("role") == UserRole.SUPER_ADMIN:
+            connection_info["supabase_key_preview"] = os.getenv("SUPABASE_ANON_KEY", "")[:20] + "..."
+            connection_info["database_url_preview"] = os.getenv("DATABASE_URL", "")[:50] + "..."
+        
+        return connection_info
+        
+    except Exception as e:
+        logger.error(f"Error getting connection info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
+
+@api_router.put("/admin/database/record/{table_name}/{record_id}")
+async def update_database_record(
+    table_name: str,
+    record_id: str,
+    update_data: Dict[str, Any],
+    current_admin: dict = Depends(require_admin_role)
+):
+    """Обновить запись в базе данных"""
+    try:
+        # Определяем поле ID для таблицы
+        id_field = "id"  # По умолчанию используем id
+        
+        # Специальные случаи для некоторых таблиц
+        if table_name == "admin_users":
+            # Для админов можем искать по email или username
+            existing_record = await db_client.get_record(table_name, "id", record_id)
+            if not existing_record:
+                existing_record = await db_client.get_record(table_name, "email", record_id)
+                if existing_record:
+                    id_field = "email"
+                else:
+                    existing_record = await db_client.get_record(table_name, "username", record_id)
+                    if existing_record:
+                        id_field = "username"
+        
+        # Обновляем запись
+        updated_record = await db_client.update_record(table_name, id_field, record_id, update_data)
+        
+        if not updated_record:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        return {
+            "success": True,
+            "updated_record": updated_record,
+            "table_name": table_name,
+            "record_id": record_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating record in {table_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
+
+@api_router.delete("/admin/database/record/{table_name}/{record_id}")
+async def delete_database_record(
+    table_name: str,
+    record_id: str,
+    current_admin: dict = Depends(require_admin_role)
+):
+    """Удалить запись из базы данных"""
+    try:
+        # Защита от удаления критически важных записей
+        if table_name == "admin_users":
+            # Не позволяем удалить последнего админа
+            admin_count = await db_client.count_records("admin_users")
+            if admin_count <= 1:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot delete the last admin user"
+                )
+            
+            # Не позволяем админу удалить самого себя
+            if current_admin.get("id") == record_id or current_admin.get("email") == record_id:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Cannot delete your own admin account"
+                )
+        
+        success = await db_client.delete_record(table_name, "id", record_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Record not found")
+        
+        return {
+            "success": True,
+            "message": f"Record {record_id} deleted from {table_name}",
+            "table_name": table_name,
+            "record_id": record_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting record from {table_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Delete error: {str(e)}")
+
+@api_router.post("/admin/database/record/{table_name}")
+async def create_database_record(
+    table_name: str,
+    record_data: Dict[str, Any],
+    current_admin: dict = Depends(require_admin_role)
+):
+    """Создать новую запись в базе данных"""
+    try:
+        # Добавляем обязательные поля если их нет
+        if "id" not in record_data:
+            record_data["id"] = str(uuid.uuid4())
+        
+        if "created_at" not in record_data:
+            record_data["created_at"] = datetime.utcnow().isoformat()
+        
+        # Создаем запись
+        created_record = await db_client.create_record(table_name, record_data)
+        
+        return {
+            "success": True,
+            "created_record": created_record,
+            "table_name": table_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Error creating record in {table_name}: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Create error: {str(e)}")
+
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
     status_dict = input.dict()
