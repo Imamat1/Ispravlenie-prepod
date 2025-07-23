@@ -25,3 +25,4 @@ realtime>=2.5.3
 websockets>=15.0.1
 storage3>=0.12.0
 supafunc>=0.10.1
+httpx[http2]==0.28.1
