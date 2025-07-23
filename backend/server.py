@@ -579,6 +579,123 @@ async def create_database_record(
         logger.error(f"Error creating record in {table_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Create error: {str(e)}")
 
+@api_router.post("/admin/database/translate-token")
+async def translate_supabase_token(
+    token_data: Dict[str, str],
+    current_admin: dict = Depends(get_current_admin)
+):
+    """Переводить/анализировать JWT токен Supabase"""
+    try:
+        token = token_data.get("token", "").strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="Token cannot be empty")
+        
+        # Используем метод из supabase_client для анализа токена
+        if hasattr(db_client, 'translate_token'):
+            token_info = db_client.translate_token(token)
+        else:
+            # Fallback для прямого анализа
+            import jwt
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            token_info = {
+                "valid": True,
+                "issuer": decoded.get("iss", "unknown"),
+                "project_ref": decoded.get("ref", "unknown"), 
+                "role": decoded.get("role", "unknown"),
+                "issued_at": decoded.get("iat", 0),
+                "expires_at": decoded.get("exp", 0)
+            }
+            
+            if token_info["issued_at"]:
+                token_info["issued_at_readable"] = datetime.fromtimestamp(token_info["issued_at"]).isoformat()
+            if token_info["expires_at"]:
+                token_info["expires_at_readable"] = datetime.fromtimestamp(token_info["expires_at"]).isoformat()
+                token_info["is_expired"] = datetime.utcnow().timestamp() > token_info["expires_at"]
+        
+        return {
+            "success": True,
+            "token_info": token_info,
+            "original_token_preview": token[:20] + "..." if len(token) > 20 else token
+        }
+        
+    except Exception as e:
+        logger.error(f"Error translating token: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "token_info": None
+        }
+
+@api_router.get("/admin/database/schema")
+async def get_database_schema(current_admin: dict = Depends(get_current_admin)):
+    """Получить схему базы данных"""
+    try:
+        if hasattr(db_client, 'get_database_schema'):
+            schema = await db_client.get_database_schema()
+        else:
+            # Fallback: получаем структуру из известных таблиц
+            schema = []
+            known_tables = [
+                "courses", "lessons", "tests", "test_questions", "test_attempts",
+                "students", "admin_users", "teachers", "team_members", 
+                "qa_questions", "qa_categories", "applications", "status_checks"
+            ]
+            
+            for table_name in known_tables:
+                try:
+                    # Получаем пример записи для определения колонок
+                    sample_record = await db_client.get_records(table_name, limit=1)
+                    if sample_record:
+                        columns = list(sample_record[0].keys())
+                        schema.append({
+                            "table_name": table_name,
+                            "columns": columns
+                        })
+                except Exception:
+                    continue
+        
+        return {
+            "success": True,
+            "schema": schema,
+            "total_tables": len(schema)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting database schema: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Schema error: {str(e)}")
+
+@api_router.get("/admin/database/supabase-info")
+async def get_supabase_info(current_admin: dict = Depends(require_admin_role)):
+    """Получить информацию о проекте Supabase"""
+    try:
+        info = {
+            "project_url": os.getenv("SUPABASE_URL", "Not configured"),
+            "database_url": os.getenv("DATABASE_URL", "Not configured") if current_admin.get("role") == UserRole.SUPER_ADMIN else "***",
+            "use_postgres": USE_POSTGRES,
+            "clients_available": {
+                "supabase": SUPABASE_AVAILABLE,
+                "postgres": POSTGRES_AVAILABLE
+            }
+        }
+        
+        # Для супер-админов показаем больше информации
+        if current_admin.get("role") == UserRole.SUPER_ADMIN:
+            supabase_key = os.getenv("SUPABASE_ANON_KEY", "")
+            info["key_preview"] = supabase_key[:20] + "..." if len(supabase_key) > 20 else supabase_key
+            
+            # Извлекаем project ID из URL
+            supabase_url = os.getenv("SUPABASE_URL", "")
+            if supabase_url and "supabase.co" in supabase_url:
+                project_id = supabase_url.split("//")[1].split(".")[0]
+                info["project_id"] = project_id
+                info["dashboard_url"] = f"https://app.supabase.com/project/{project_id}"
+        
+        return info
+        
+    except Exception as e:
+        logger.error(f"Error getting Supabase info: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Supabase info error: {str(e)}")
+
 @api_router.post("/status", response_model=StatusCheck)
 async def create_status_check(input: StatusCheckCreate):
     status_dict = input.dict()
