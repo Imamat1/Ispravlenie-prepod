@@ -6,6 +6,7 @@ import { StudentManagement, ApplicationManagement, ReportsComponent } from './Ad
 import MaterialUploadPanel from './MaterialUploadPanel';
 import { QAManagement } from './QAManagement';
 import { TeamManagement } from './TeamManagement';
+import DatabaseAdmin from './DatabaseAdmin';
 
 // Login Component for Admin Panel
 const AdminLoginComponent = () => {
