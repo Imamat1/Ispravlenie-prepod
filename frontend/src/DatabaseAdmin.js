@@ -609,7 +609,8 @@ const DatabaseAdmin = () => {
           {[
             { id: 'overview', label: 'Обзор', icon: '📊' },
             { id: 'table-data', label: 'Данные таблиц', icon: '📋' },
-            { id: 'sql-console', label: 'SQL Консоль', icon: '💻' }
+            { id: 'sql-console', label: 'SQL Консоль', icon: '💻' },
+            { id: 'token-analyzer', label: 'Анализ токенов', icon: '🔑' }
           ].map((tab) => (
             <button
               key={tab.id}
