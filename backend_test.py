@@ -2407,10 +2407,14 @@ def test_mongodb_connection():
 
 def main():
     print("\n=== ISLAMIC EDUCATIONAL PLATFORM BACKEND API TESTING ===")
-    print("Testing MongoDB connection and API endpoints after switching from Atlas to local database")
+    print("Testing Database Administration API endpoints")
     
     # Dictionary to track test results
     test_results = {}
+    
+    # Test Database Administration API endpoints
+    db_admin_success = test_database_administration_endpoints()
+    test_results["Database Administration API Endpoints"] = db_admin_success
     
     # Test MongoDB connection and basic API endpoints
     mongodb_success = test_mongodb_connection()
