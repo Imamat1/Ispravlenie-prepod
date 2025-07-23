@@ -218,5 +218,79 @@ class SupabaseClient:
             logger.error(f"Error executing raw SQL: {str(e)}")
             raise
 
+    def get_connection_info(self) -> Dict[str, Any]:
+        """Get Supabase connection information"""
+        try:
+            return {
+                "url": self.client.supabase_url,
+                "key_preview": self.client.supabase_key[:20] + "..." if hasattr(self.client, 'supabase_key') else "***",
+                "project_id": self.client.supabase_url.split('//')[1].split('.')[0] if self.client.supabase_url else None,
+                "status": "connected"
+            }
+        except Exception as e:
+            logger.error(f"Error getting connection info: {str(e)}")
+            return {
+                "url": "unknown",
+                "key_preview": "***",
+                "project_id": "unknown", 
+                "status": "error",
+                "error": str(e)
+            }
+
+    def translate_token(self, token: str) -> Dict[str, Any]:
+        """Decode and analyze JWT token"""
+        try:
+            import jwt
+            # Decode without verification to inspect payload
+            decoded = jwt.decode(token, options={"verify_signature": False})
+            
+            # Extract key information
+            info = {
+                "issuer": decoded.get("iss", "unknown"),
+                "project_ref": decoded.get("ref", "unknown"),
+                "role": decoded.get("role", "unknown"),
+                "issued_at": decoded.get("iat", 0),
+                "expires_at": decoded.get("exp", 0),
+                "valid": True
+            }
+            
+            # Convert timestamps to readable format
+            if info["issued_at"]:
+                info["issued_at_readable"] = datetime.fromtimestamp(info["issued_at"]).isoformat()
+            if info["expires_at"]:
+                info["expires_at_readable"] = datetime.fromtimestamp(info["expires_at"]).isoformat()
+                info["is_expired"] = datetime.now().timestamp() > info["expires_at"]
+            
+            return info
+            
+        except Exception as e:
+            logger.error(f"Error translating token: {str(e)}")
+            return {
+                "valid": False,
+                "error": str(e),
+                "raw_token_preview": token[:20] + "..." if len(token) > 20 else token
+            }
+
+    async def get_database_schema(self) -> List[Dict[str, Any]]:
+        """Get database schema information"""
+        try:
+            # Try to get schema via RPC call
+            schema_info = self.client.rpc('get_schema_info').execute()
+            if schema_info.data:
+                return schema_info.data
+            else:
+                # Fallback: return known tables structure
+                return [
+                    {"table_name": "courses", "columns": ["id", "title", "description", "level", "status"]},
+                    {"table_name": "lessons", "columns": ["id", "course_id", "title", "content", "video_url"]},
+                    {"table_name": "students", "columns": ["id", "name", "email", "total_score", "is_active"]},
+                    {"table_name": "admin_users", "columns": ["id", "username", "email", "role", "created_at"]},
+                    {"table_name": "team_members", "columns": ["id", "name", "position", "bio", "photo"]},
+                    {"table_name": "qa_questions", "columns": ["id", "question", "answer", "category", "views"]}
+                ]
+        except Exception as e:
+            logger.error(f"Error getting database schema: {str(e)}")
+            return []
+
 # Global instance
 supabase_client = SupabaseClient()
