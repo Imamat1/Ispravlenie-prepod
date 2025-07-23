@@ -1670,6 +1670,331 @@ def test_islam_culture_course_and_promocodes():
     print(f"\n📊 'Культура Ислама' Course and Promocode Tests: {tester.tests_passed}/{tester.tests_run} passed")
     return overall_success
 
+def test_database_administration_endpoints():
+    """Test the new database administration API endpoints"""
+    print("\n=== Testing Database Administration API Endpoints ===")
+    tester = IslamAppAPITester()
+    
+    # 1. Test admin login with the provided credentials
+    print("\n🔑 Testing admin login with credentials: admin@uroki-islama.ru/admin123")
+    admin_login_success = tester.test_unified_login("admin@uroki-islama.ru", "admin123", "admin")
+    
+    if not admin_login_success:
+        print("❌ Admin login failed, stopping database admin tests")
+        return False
+    
+    print("✅ Admin authentication successful")
+    
+    # 2. Test GET /api/admin/database/tables - получение списка таблиц с количеством записей
+    print("\n📊 Testing GET /api/admin/database/tables")
+    tables_success, tables_response = tester.run_test(
+        "Get Database Tables",
+        "GET",
+        "admin/database/tables",
+        200
+    )
+    
+    tables_list = []
+    if tables_success:
+        try:
+            tables_data = tables_response.json()
+            print(f"✅ Found {len(tables_data)} table(s) in database")
+            for table in tables_data:
+                table_name = table.get('name')
+                record_count = table.get('record_count', 0)
+                tables_list.append(table_name)
+                print(f"  - {table_name}: {record_count} records")
+        except Exception as e:
+            print(f"❌ Failed to parse tables data: {str(e)}")
+            tables_success = False
+    
+    # 3. Test GET /api/admin/database/table/{table_name} - получение данных конкретной таблицы со структурой
+    test_table = "courses"  # Use a known table
+    if test_table in tables_list or not tables_list:  # Test even if tables_list is empty
+        print(f"\n📋 Testing GET /api/admin/database/table/{test_table}")
+        table_data_success, table_data_response = tester.run_test(
+            f"Get Table Data for {test_table}",
+            "GET",
+            f"admin/database/table/{test_table}?limit=5&offset=0",
+            200
+        )
+        
+        if table_data_success:
+            try:
+                table_info = table_data_response.json()
+                print(f"✅ Table: {table_info.get('table_name')}")
+                print(f"✅ Total records: {table_info.get('total_count')}")
+                print(f"✅ Current page: {table_info.get('current_page')}")
+                print(f"✅ Records returned: {len(table_info.get('records', []))}")
+                
+                # Check structure
+                structure = table_info.get('structure', [])
+                if structure:
+                    print(f"✅ Table structure has {len(structure)} columns")
+                    for col in structure[:3]:  # Show first 3 columns
+                        print(f"  - {col.get('column_name')}: {col.get('data_type')}")
+                else:
+                    print("❌ No table structure information")
+            except Exception as e:
+                print(f"❌ Failed to parse table data: {str(e)}")
+                table_data_success = False
+    else:
+        print(f"⚠️ Skipping table data test - no suitable table found")
+        table_data_success = True  # Don't fail the overall test
+    
+    # 4. Test GET /api/admin/database/stats - получение статистики базы данных
+    print("\n📈 Testing GET /api/admin/database/stats")
+    stats_success, stats_response = tester.run_test(
+        "Get Database Stats",
+        "GET",
+        "admin/database/stats",
+        200
+    )
+    
+    if stats_success:
+        try:
+            stats_data = stats_response.json()
+            print(f"✅ Database type: {stats_data.get('database_type')}")
+            print(f"✅ Connection status: {stats_data.get('connection_status')}")
+            
+            stats_info = stats_data.get('stats', {})
+            if stats_info:
+                print(f"✅ Statistics for {len(stats_info)} entities:")
+                for key, value in list(stats_info.items())[:5]:  # Show first 5
+                    print(f"  - {value.get('name', key)}: {value.get('count', 0)}")
+            else:
+                print("❌ No statistics data")
+        except Exception as e:
+            print(f"❌ Failed to parse stats data: {str(e)}")
+            stats_success = False
+    
+    # 5. Test GET /api/admin/database/connection-info - информация о подключении
+    print("\n🔗 Testing GET /api/admin/database/connection-info")
+    connection_success, connection_response = tester.run_test(
+        "Get Database Connection Info",
+        "GET",
+        "admin/database/connection-info",
+        200
+    )
+    
+    if connection_success:
+        try:
+            connection_data = connection_response.json()
+            print(f"✅ Database type: {connection_data.get('database_type')}")
+            print(f"✅ Use postgres: {connection_data.get('use_postgres')}")
+            print(f"✅ Connection status: {connection_data.get('connection_status')}")
+            
+            clients = connection_data.get('clients_available', {})
+            print(f"✅ Clients available: postgres={clients.get('postgres')}, supabase={clients.get('supabase')}")
+        except Exception as e:
+            print(f"❌ Failed to parse connection info: {str(e)}")
+            connection_success = False
+    
+    # 6. Test POST /api/admin/database/query - выполнение SQL запросов (только SELECT для обычных админов)
+    print("\n🔍 Testing POST /api/admin/database/query")
+    query_success, query_response = tester.run_test(
+        "Execute SQL Query (SELECT)",
+        "POST",
+        "admin/database/query",
+        200,
+        data={"query": "SELECT COUNT(*) as total FROM courses;"}
+    )
+    
+    if query_success:
+        try:
+            query_data = query_response.json()
+            print(f"✅ Query success: {query_data.get('success')}")
+            print(f"✅ Row count: {query_data.get('row_count')}")
+            
+            result = query_data.get('result', [])
+            if result:
+                print(f"✅ Query result: {result[0]}")
+        except Exception as e:
+            print(f"❌ Failed to parse query result: {str(e)}")
+            query_success = False
+    
+    # Test dangerous query (should be blocked for regular admins)
+    print("\n🚫 Testing dangerous SQL query (should be blocked)")
+    dangerous_query_success, dangerous_query_response = tester.run_test(
+        "Execute Dangerous SQL Query (should fail)",
+        "POST",
+        "admin/database/query",
+        403,  # Expecting forbidden
+        data={"query": "DROP TABLE courses;"}
+    )
+    
+    if dangerous_query_success:
+        print("✅ Dangerous query correctly blocked")
+    else:
+        print("❌ Dangerous query was not properly blocked")
+    
+    # 7. Test POST /api/admin/database/backup - создание резервной копии
+    print("\n💾 Testing POST /api/admin/database/backup")
+    backup_success, backup_response = tester.run_test(
+        "Create Database Backup",
+        "POST",
+        "admin/database/backup",
+        200
+    )
+    
+    if backup_success:
+        try:
+            backup_data = backup_response.json()
+            print(f"✅ Backup success: {backup_data.get('success')}")
+            print(f"✅ Backup file: {backup_data.get('backup_file')}")
+            print(f"✅ Tables backed up: {len(backup_data.get('tables_backed_up', []))}")
+            print(f"✅ Total records: {backup_data.get('total_records')}")
+        except Exception as e:
+            print(f"❌ Failed to parse backup result: {str(e)}")
+            backup_success = False
+    
+    # 8. Test GET /api/admin/database/supabase-info - информация о проекте Supabase
+    print("\n🗄️ Testing GET /api/admin/database/supabase-info")
+    supabase_info_success, supabase_info_response = tester.run_test(
+        "Get Supabase Info",
+        "GET",
+        "admin/database/supabase-info",
+        200
+    )
+    
+    if supabase_info_success:
+        try:
+            supabase_data = supabase_info_response.json()
+            print(f"✅ Project URL: {supabase_data.get('project_url')}")
+            print(f"✅ Use postgres: {supabase_data.get('use_postgres')}")
+            
+            clients = supabase_data.get('clients_available', {})
+            print(f"✅ Clients: postgres={clients.get('postgres')}, supabase={clients.get('supabase')}")
+        except Exception as e:
+            print(f"❌ Failed to parse Supabase info: {str(e)}")
+            supabase_info_success = False
+    
+    # 9. Test POST /api/admin/database/translate-token - анализ JWT токенов
+    print("\n🔐 Testing POST /api/admin/database/translate-token")
+    # Use a sample JWT token for testing
+    sample_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    
+    token_success, token_response = tester.run_test(
+        "Translate JWT Token",
+        "POST",
+        "admin/database/translate-token",
+        200,
+        data={"token": sample_token}
+    )
+    
+    if token_success:
+        try:
+            token_data = token_response.json()
+            print(f"✅ Token analysis success: {token_data.get('success')}")
+            
+            token_info = token_data.get('token_info', {})
+            if token_info:
+                print(f"✅ Token valid: {token_info.get('valid')}")
+                print(f"✅ Token preview: {token_data.get('original_token_preview')}")
+        except Exception as e:
+            print(f"❌ Failed to parse token analysis: {str(e)}")
+            token_success = False
+    
+    # 10. Test CRUD operations on database records
+    print("\n📝 Testing database record CRUD operations")
+    
+    # Test creating a record in courses table
+    print("\n➕ Testing POST /api/admin/database/record/courses")
+    test_course_data = {
+        "title": "Test Database Course",
+        "description": "Course created for database testing",
+        "level": "level_1",
+        "teacher_id": str(uuid.uuid4()),
+        "teacher_name": "Test Teacher",
+        "difficulty": "Easy",
+        "estimated_duration_hours": 5,
+        "status": "draft"
+    }
+    
+    create_record_success, create_record_response = tester.run_test(
+        "Create Database Record",
+        "POST",
+        "admin/database/record/courses",
+        200,
+        data=test_course_data
+    )
+    
+    created_record_id = None
+    if create_record_success:
+        try:
+            created_record = create_record_response.json()
+            created_record_id = created_record.get('created_record', {}).get('id')
+            print(f"✅ Created record with ID: {created_record_id}")
+        except Exception as e:
+            print(f"❌ Failed to parse created record: {str(e)}")
+            create_record_success = False
+    
+    # Test updating the created record
+    if created_record_id:
+        print(f"\n✏️ Testing PUT /api/admin/database/record/courses/{created_record_id}")
+        update_data = {
+            "title": "Updated Test Database Course",
+            "status": "published"
+        }
+        
+        update_record_success, update_record_response = tester.run_test(
+            "Update Database Record",
+            "PUT",
+            f"admin/database/record/courses/{created_record_id}",
+            200,
+            data=update_data
+        )
+        
+        if update_record_success:
+            try:
+                updated_record = update_record_response.json()
+                print(f"✅ Updated record successfully")
+                print(f"✅ New title: {updated_record.get('updated_record', {}).get('title')}")
+            except Exception as e:
+                print(f"❌ Failed to parse updated record: {str(e)}")
+                update_record_success = False
+        
+        # Test deleting the created record
+        print(f"\n🗑️ Testing DELETE /api/admin/database/record/courses/{created_record_id}")
+        delete_record_success, delete_record_response = tester.run_test(
+            "Delete Database Record",
+            "DELETE",
+            f"admin/database/record/courses/{created_record_id}",
+            200
+        )
+        
+        if delete_record_success:
+            try:
+                delete_result = delete_record_response.json()
+                print(f"✅ Deleted record successfully: {delete_result.get('message')}")
+            except Exception as e:
+                print(f"❌ Failed to parse delete result: {str(e)}")
+                delete_record_success = False
+    else:
+        print("⚠️ Skipping update and delete tests - no record was created")
+        update_record_success = True
+        delete_record_success = True
+    
+    # Overall result
+    overall_success = (
+        admin_login_success and 
+        tables_success and 
+        table_data_success and 
+        stats_success and 
+        connection_success and 
+        query_success and 
+        dangerous_query_success and  # This should succeed (meaning the dangerous query was blocked)
+        backup_success and 
+        supabase_info_success and 
+        token_success and 
+        create_record_success and 
+        update_record_success and 
+        delete_record_success
+    )
+    
+    print(f"\n📊 Database Administration Tests: {tester.tests_passed}/{tester.tests_run} passed")
+    return overall_success
+
 def test_admin_auth_and_course_deployment():
     """Test admin authentication and complete course deployment workflow"""
     print("\n=== Testing Admin Authentication and Course Deployment Workflow ===")
