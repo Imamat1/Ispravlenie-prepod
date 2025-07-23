@@ -541,6 +541,36 @@ backend:
         comment: "Comprehensive testing of Q&A API completed. All endpoints are working correctly including creation, updating, and deletion of questions. The API properly handles authentication and returns appropriate responses."
 
 frontend:
+  - task: "Database Administration Interface"
+    implemented: true
+    working: true
+    file: "DatabaseAdmin.js, MainAdminPanel.js"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Создание полного интерфейса для администрирования базы данных Supabase"
+      - working: true
+        agent: "main"
+        comment: "Создан компонент DatabaseAdmin.js с четырьмя разделами: Обзор, Данные таблиц, SQL Консоль, Анализ токенов. Добавлена вкладка 'База данных' в главную админку"
+
+  - task: "JWT Token Analyzer Interface"
+    implemented: true
+    working: true
+    file: "DatabaseAdmin.js"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: true
+    status_history:
+      - working: "NA"
+        agent: "main"
+        comment: "Создание интерфейса для анализа JWT токенов Supabase"
+      - working: true
+        agent: "main"
+        comment: "Реализован интерфейс анализа токенов с расшифровкой информации о проекте, ролях, сроках действия"
+
   - task: "Premium Course Access Control"
     implemented: true
     working: true
