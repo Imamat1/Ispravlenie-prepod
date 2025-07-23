@@ -15,6 +15,9 @@ const DatabaseAdmin = () => {
   const [connectionInfo, setConnectionInfo] = useState(null);
   const [sqlQuery, setSqlQuery] = useState('');
   const [sqlResult, setSqlResult] = useState(null);
+  const [supabaseInfo, setSupabaseInfo] = useState(null);
+  const [tokenToTranslate, setTokenToTranslate] = useState('');
+  const [tokenResult, setTokenResult] = useState(null);
   
   const backendUrl = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
