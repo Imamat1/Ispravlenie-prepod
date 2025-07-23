@@ -466,6 +466,120 @@ const DatabaseAdmin = () => {
     </div>
   );
 
+  // Render token analyzer
+  const renderTokenAnalyzer = () => (
+    <div className="bg-white rounded-lg shadow p-6">
+      <h3 className="text-lg font-semibold mb-4">Анализатор JWT токенов</h3>
+      
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          JWT токен для анализа:
+        </label>
+        <textarea
+          value={tokenToTranslate}
+          onChange={(e) => setTokenToTranslate(e.target.value)}
+          placeholder="Вставьте JWT токен здесь..."
+          className="w-full h-24 p-3 border rounded-lg font-mono text-sm"
+        />
+      </div>
+      
+      <div className="flex gap-2 mb-4">
+        <button
+          onClick={translateToken}
+          disabled={loading || !tokenToTranslate.trim()}
+          className="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 disabled:opacity-50"
+        >
+          Анализировать токен
+        </button>
+        <button
+          onClick={() => {
+            setTokenToTranslate('');
+            setTokenResult(null);
+          }}
+          className="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600"
+        >
+          Очистить
+        </button>
+      </div>
+      
+      <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm">
+        ℹ️ Этот инструмент поможет расшифровать JWT токены Supabase и понять их содержимое
+      </div>
+      
+      {tokenResult && (
+        <div className="border rounded-lg p-4">
+          <h4 className="font-semibold mb-2">
+            Результат анализа {tokenResult.success ? '✅' : '❌'}
+          </h4>
+          
+          {tokenResult.success && tokenResult.token_info ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <span className="font-medium">Валидность:</span>
+                  <span className={`ml-2 px-2 py-1 rounded text-sm ${tokenResult.token_info.valid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                    {tokenResult.token_info.valid ? 'Валидный' : 'Невалидный'}
+                  </span>
+                </div>
+                
+                {tokenResult.token_info.issuer && (
+                  <div>
+                    <span className="font-medium">Издатель:</span>
+                    <span className="ml-2 text-gray-600">{tokenResult.token_info.issuer}</span>
+                  </div>
+                )}
+                
+                {tokenResult.token_info.project_ref && (
+                  <div>
+                    <span className="font-medium">Проект:</span>
+                    <span className="ml-2 font-mono text-gray-600">{tokenResult.token_info.project_ref}</span>
+                  </div>
+                )}
+                
+                {tokenResult.token_info.role && (
+                  <div>
+                    <span className="font-medium">Роль:</span>
+                    <span className="ml-2 text-blue-600">{tokenResult.token_info.role}</span>
+                  </div>
+                )}
+                
+                {tokenResult.token_info.issued_at_readable && (
+                  <div>
+                    <span className="font-medium">Выдан:</span>
+                    <span className="ml-2 text-gray-600">{new Date(tokenResult.token_info.issued_at_readable).toLocaleString('ru-RU')}</span>
+                  </div>
+                )}
+                
+                {tokenResult.token_info.expires_at_readable && (
+                  <div>
+                    <span className="font-medium">Истекает:</span>
+                    <span className={`ml-2 ${tokenResult.token_info.is_expired ? 'text-red-600' : 'text-green-600'}`}>
+                      {new Date(tokenResult.token_info.expires_at_readable).toLocaleString('ru-RU')}
+                      {tokenResult.token_info.is_expired && ' (Истек)'}
+                    </span>
+                  </div>
+                )}
+              </div>
+              
+              {tokenResult.original_token_preview && (
+                <div className="mt-4 pt-3 border-t">
+                  <span className="font-medium">Токен (превью):</span>
+                  <span className="ml-2 text-xs font-mono text-gray-500 break-all">
+                    {tokenResult.original_token_preview}
+                  </span>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-red-600 bg-red-50 p-3 rounded">
+              <strong>Ошибка:</strong> {tokenResult.error}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   if (!adminData) {
     return (
       <div className="flex items-center justify-center h-64">
