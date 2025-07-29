@@ -420,6 +420,12 @@ const LessonModal = ({ lesson, courses, onClose, onSave }) => {
             {lesson ? 'Редактировать урок' : 'Добавить урок'}
           </h3>
           
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-md">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
+          
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
