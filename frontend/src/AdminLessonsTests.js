@@ -238,6 +238,7 @@ const LessonModal = ({ lesson, courses, onClose, onSave }) => {
     estimated_duration_minutes: lesson?.estimated_duration_minutes || 15
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showTestForm, setShowTestForm] = useState(false);
   const [testFormData, setTestFormData] = useState({
     title: '',
@@ -262,8 +263,28 @@ const LessonModal = ({ lesson, courses, onClose, onSave }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
     try {
+      // Client-side validation
+      if (!formData.title.trim()) {
+        setError('Название урока обязательно для заполнения');
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.course_id) {
+        setError('Выберите курс для урока');
+        setLoading(false);
+        return;
+      }
+      
+      if (!formData.content.trim()) {
+        setError('Содержание урока обязательно для заполнения');
+        setLoading(false);
+        return;
+      }
+
       if (lesson) {
         await axios.put(`${API}/admin/lessons/${lesson.id}`, formData, {
           headers: { Authorization: `Bearer ${token}` }
@@ -276,6 +297,21 @@ const LessonModal = ({ lesson, courses, onClose, onSave }) => {
       onSave();
     } catch (error) {
       console.error('Failed to save lesson:', error);
+      
+      let errorMessage = 'Ошибка сохранения урока';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.status === 400) {
+        errorMessage = 'Неверные данные. Проверьте правильность заполнения полей.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Нет прав доступа. Пожалуйста, войдите в систему заново.';
+      } else if (error.response?.status === 404) {
+        errorMessage = 'Курс не найден. Выберите существующий курс.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
     }
     setLoading(false);
   };
