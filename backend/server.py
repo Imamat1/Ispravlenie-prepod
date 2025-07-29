@@ -910,6 +910,34 @@ async def get_admin_course_lessons(course_id: str, current_admin: dict = Depends
     )
     return [Lesson(**lesson) for lesson in lessons]
 
+@api_router.get("/admin/lessons", response_model=List[Lesson])
+async def get_admin_all_lessons(current_admin: dict = Depends(get_current_admin)):
+    """Get all lessons for admin - returns lessons with course info"""
+    try:
+        # Get all lessons
+        lessons = await db_client.get_records("lessons", order_by="order")
+        
+        # Get course information to add course_title to each lesson
+        courses = await db_client.get_records("courses")
+        course_map = {course["id"]: course for course in courses}
+        
+        # Add course title to each lesson
+        enriched_lessons = []
+        for lesson in lessons:
+            lesson_dict = dict(lesson)
+            course_id = lesson.get("course_id")
+            if course_id and course_id in course_map:
+                lesson_dict["course_title"] = course_map[course_id].get("title", "Unknown Course")
+            else:
+                lesson_dict["course_title"] = "Unknown Course"
+            enriched_lessons.append(lesson_dict)
+        
+        return enriched_lessons
+        
+    except Exception as e:
+        logger.error(f"Error fetching all lessons: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch lessons: {str(e)}")
+
 @api_router.get("/lessons/{lesson_id}", response_model=Lesson)
 async def get_lesson(lesson_id: str):
     lesson = await db_client.get_record("lessons", "id", lesson_id)
