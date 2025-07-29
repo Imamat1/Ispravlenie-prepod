@@ -323,11 +323,13 @@ const TeacherModal = ({ teacher, onClose, onSave }) => {
     image_url: teacher?.image_url || ''
   });
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const { token } = useCompleteAdmin();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
+    setError('');
 
     try {
       if (teacher) {
@@ -342,6 +344,21 @@ const TeacherModal = ({ teacher, onClose, onSave }) => {
       onSave();
     } catch (error) {
       console.error('Failed to save teacher:', error);
+      
+      let errorMessage = 'Ошибка сохранения преподавателя';
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.response?.status === 400) {
+        errorMessage = 'Неверные данные. Проверьте правильность заполнения полей.';
+      } else if (error.response?.status === 401) {
+        errorMessage = 'Нет прав доступа. Пожалуйста, войдите в систему заново.';
+      } else if (error.response?.status === 409) {
+        errorMessage = 'Преподаватель с таким email уже существует.';
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      setError(errorMessage);
     }
     setLoading(false);
   };
@@ -353,6 +370,12 @@ const TeacherModal = ({ teacher, onClose, onSave }) => {
           <h3 className="text-lg font-medium text-gray-900 mb-4">
             {teacher ? 'Редактировать преподавателя' : 'Добавить преподавателя'}
           </h3>
+          
+          {error && (
+            <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-md">
+              <p className="text-red-700 text-sm">{error}</p>
+            </div>
+          )}
           
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
