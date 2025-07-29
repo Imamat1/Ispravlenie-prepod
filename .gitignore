@@ -49,3 +49,4 @@ dist/
 # Temporary files
 temp/
 tmp/
+.env
