@@ -926,15 +926,36 @@ async def get_admin_lesson(lesson_id: str, current_admin: dict = Depends(get_cur
 
 @api_router.post("/admin/lessons", response_model=Lesson)
 async def create_lesson(lesson_data: LessonCreate, current_admin: dict = Depends(get_current_admin)):
-    lesson_dict = lesson_data.dict()
-    
-    # Convert YouTube URL to embed format
-    if lesson_dict.get("video_url"):
-        lesson_dict["video_url"] = convert_to_embed_url(lesson_dict["video_url"])
-    
-    lesson_obj = Lesson(**lesson_dict)
-    created_lesson = await db_client.create_record("lessons", lesson_obj.dict())
-    return Lesson(**created_lesson)
+    try:
+        # Validate course exists
+        course = await db_client.get_record("courses", "id", lesson_data.course_id)
+        if not course:
+            raise HTTPException(status_code=400, detail="Course not found")
+        
+        lesson_dict = lesson_data.dict()
+        
+        # Convert YouTube URL to embed format
+        if lesson_dict.get("video_url"):
+            lesson_dict["video_url"] = convert_to_embed_url(lesson_dict["video_url"])
+        
+        # Validate required fields
+        if not lesson_dict.get("title", "").strip():
+            raise HTTPException(status_code=400, detail="Lesson title is required")
+        
+        if not lesson_dict.get("content", "").strip():
+            raise HTTPException(status_code=400, detail="Lesson content is required")
+        
+        lesson_obj = Lesson(**lesson_dict)
+        created_lesson = await db_client.create_record("lessons", lesson_obj.dict())
+        
+        logger.info(f"Created lesson: {created_lesson.get('id')} - {created_lesson.get('title')}")
+        return Lesson(**created_lesson)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating lesson: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create lesson: {str(e)}")
 
 @api_router.put("/admin/lessons/{lesson_id}", response_model=Lesson)
 async def update_lesson(lesson_id: str, lesson_data: LessonUpdate, current_admin: dict = Depends(get_current_admin)):
