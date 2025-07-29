@@ -2767,4 +2767,24 @@ def main():
     return 0 if overall_success else 1
 
 if __name__ == "__main__":
-    sys.exit(main())
+    print("🚀 Starting Islam App API Testing Suite")
+    print("=" * 60)
+    
+    # Test lesson management endpoints as requested
+    print("\n🎯 Running Lesson Management API Tests")
+    lesson_success = test_lesson_management_endpoints()
+    
+    if lesson_success:
+        print("\n✅ Lesson Management API Tests: PASSED")
+    else:
+        print("\n❌ Lesson Management API Tests: FAILED")
+    
+    print("\n" + "=" * 60)
+    print("🏁 Testing Complete")
+    
+    if lesson_success:
+        print("🎉 All requested tests PASSED!")
+        sys.exit(0)
+    else:
+        print("💥 Some tests FAILED!")
+        sys.exit(1)
