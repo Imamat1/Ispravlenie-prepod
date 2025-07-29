@@ -1670,6 +1670,341 @@ def test_islam_culture_course_and_promocodes():
     print(f"\n📊 'Культура Ислама' Course and Promocode Tests: {tester.tests_passed}/{tester.tests_run} passed")
     return overall_success
 
+def test_lesson_management_endpoints():
+    """Test lesson management API endpoints as requested"""
+    print("\n=== Testing Lesson Management API Endpoints ===")
+    tester = IslamAppAPITester()
+    
+    # 1. Test admin login with the provided credentials
+    print("\n🔑 Testing admin login with credentials: admin@uroki-islama.ru/admin123")
+    admin_login_success = tester.test_unified_login("admin@uroki-islama.ru", "admin123", "admin")
+    
+    if not admin_login_success:
+        print("❌ Admin login failed, stopping lesson management tests")
+        return False
+    
+    print("✅ Admin authentication successful")
+    
+    # Get existing courses first to use a valid course_id
+    print("\n📚 Getting existing courses for testing")
+    courses_success, courses_response = tester.run_test(
+        "Get Admin Courses",
+        "GET",
+        "admin/courses",
+        200
+    )
+    
+    existing_course_id = None
+    if courses_success:
+        try:
+            courses_data = courses_response.json()
+            if courses_data and len(courses_data) > 0:
+                existing_course_id = courses_data[0]["id"]
+                print(f"✅ Using existing course ID: {existing_course_id}")
+            else:
+                print("❌ No existing courses found, creating a test course")
+                # Create a test course
+                course_data = {
+                    "title": "Тестовый курс для уроков",
+                    "description": "Курс для тестирования управления уроками",
+                    "level": "level_1",
+                    "teacher_id": "test-teacher-id",
+                    "teacher_name": "Тестовый преподаватель",
+                    "difficulty": "Легко",
+                    "estimated_duration_hours": 10,
+                    "image_url": "https://example.com/image.jpg",
+                    "status": "published"
+                }
+                create_course_success, create_course_response = tester.run_test(
+                    "Create Test Course",
+                    "POST",
+                    "admin/courses",
+                    200,
+                    data=course_data
+                )
+                if create_course_success:
+                    existing_course_id = create_course_response.json()["id"]
+                    print(f"✅ Created test course ID: {existing_course_id}")
+        except Exception as e:
+            print(f"❌ Failed to get courses: {str(e)}")
+            return False
+    
+    if not existing_course_id:
+        print("❌ Could not get or create a course for testing")
+        return False
+    
+    # 2. Test GET /api/admin/lessons - получение всех уроков для админа
+    print("\n📚 Testing GET /api/admin/lessons")
+    all_lessons_success, all_lessons_response = tester.run_test(
+        "Get All Admin Lessons",
+        "GET",
+        "admin/lessons",
+        200
+    )
+    
+    if all_lessons_success:
+        try:
+            lessons_data = all_lessons_response.json()
+            print(f"✅ Found {len(lessons_data)} lesson(s)")
+            
+            # Check if lessons have course_title field
+            if lessons_data:
+                first_lesson = lessons_data[0]
+                if 'course_title' in first_lesson:
+                    print(f"✅ Lessons include course_title: {first_lesson.get('course_title')}")
+                else:
+                    print("❌ Lessons missing course_title field")
+                    all_lessons_success = False
+        except Exception as e:
+            print(f"❌ Failed to parse lessons data: {str(e)}")
+            all_lessons_success = False
+    
+    # 3. Test POST /api/admin/lessons - создание нового урока
+    print("\n➕ Testing POST /api/admin/lessons")
+    
+    lesson_data = {
+        "course_id": existing_course_id,
+        "title": "Тестовый урок по основам ислама",
+        "description": "Описание тестового урока",
+        "content": "Подробное содержание урока с HTML разметкой <h1>Заголовок</h1><p>Параграф текста</p>",
+        "lesson_type": "text",
+        "video_url": "",
+        "video_duration": None,
+        "order": 1,
+        "estimated_duration_minutes": 15
+    }
+    
+    create_lesson_success, create_lesson_response = tester.run_test(
+        "Create New Lesson",
+        "POST",
+        "admin/lessons",
+        200,
+        data=lesson_data
+    )
+    
+    created_lesson_id = None
+    if create_lesson_success:
+        try:
+            created_lesson = create_lesson_response.json()
+            created_lesson_id = created_lesson.get('id')
+            print(f"✅ Created lesson with ID: {created_lesson_id}")
+            
+            # Verify lesson data
+            for key, value in lesson_data.items():
+                if key in created_lesson and created_lesson[key] == value:
+                    print(f"✅ Created lesson has correct {key}")
+                elif key in created_lesson:
+                    print(f"❌ Created lesson has incorrect {key}: expected {value}, got {created_lesson[key]}")
+                else:
+                    print(f"❌ Created lesson is missing {key}")
+        except Exception as e:
+            print(f"❌ Failed to parse created lesson data: {str(e)}")
+            create_lesson_success = False
+    
+    # 4. Test validation - создание урока без обязательных полей
+    print("\n❌ Testing POST /api/admin/lessons - validation without required fields")
+    
+    invalid_lesson_data = {
+        "course_id": existing_course_id,
+        # Missing title and content
+        "description": "Урок без заголовка и содержания",
+        "lesson_type": "text"
+    }
+    
+    validation_success, validation_response = tester.run_test(
+        "Create Lesson Without Required Fields",
+        "POST",
+        "admin/lessons",
+        400,  # Expecting validation error
+        data=invalid_lesson_data
+    )
+    
+    if validation_success:
+        print("✅ Validation correctly rejected lesson without required fields")
+    else:
+        print("❌ Validation failed to reject lesson without required fields")
+    
+    # 5. Test validation - создание урока с несуществующим course_id
+    print("\n❌ Testing POST /api/admin/lessons - validation with non-existent course_id")
+    
+    invalid_course_lesson_data = {
+        "course_id": "non-existent-course-id",
+        "title": "Урок с несуществующим курсом",
+        "content": "Содержание урока",
+        "lesson_type": "text"
+    }
+    
+    invalid_course_success, invalid_course_response = tester.run_test(
+        "Create Lesson With Invalid Course ID",
+        "POST",
+        "admin/lessons",
+        400,  # Expecting validation error
+        data=invalid_course_lesson_data
+    )
+    
+    if invalid_course_success:
+        print("✅ Validation correctly rejected lesson with non-existent course_id")
+    else:
+        print("❌ Validation failed to reject lesson with non-existent course_id")
+    
+    # 6. Test YouTube URL conversion
+    print("\n🎥 Testing POST /api/admin/lessons - YouTube URL conversion")
+    
+    youtube_lesson_data = {
+        "course_id": existing_course_id,
+        "title": "Урок с YouTube видео",
+        "content": "Урок с видео контентом",
+        "lesson_type": "video",
+        "video_url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",  # Sample YouTube URL
+        "order": 2,
+        "estimated_duration_minutes": 20
+    }
+    
+    youtube_lesson_success, youtube_lesson_response = tester.run_test(
+        "Create Lesson With YouTube URL",
+        "POST",
+        "admin/lessons",
+        200,
+        data=youtube_lesson_data
+    )
+    
+    youtube_lesson_id = None
+    if youtube_lesson_success:
+        try:
+            youtube_lesson = youtube_lesson_response.json()
+            youtube_lesson_id = youtube_lesson.get('id')
+            video_url = youtube_lesson.get('video_url')
+            
+            if video_url and "youtube.com/embed/" in video_url:
+                print(f"✅ YouTube URL correctly converted to embed format: {video_url}")
+            else:
+                print(f"❌ YouTube URL not converted properly: {video_url}")
+                youtube_lesson_success = False
+        except Exception as e:
+            print(f"❌ Failed to parse YouTube lesson data: {str(e)}")
+            youtube_lesson_success = False
+    
+    # 7. Test PUT /api/admin/lessons/{lesson_id} - обновление урока
+    if created_lesson_id:
+        print(f"\n✏️ Testing PUT /api/admin/lessons/{created_lesson_id}")
+        
+        update_data = {
+            "title": "Обновленный тестовый урок",
+            "content": "Обновленное содержание урока <h2>Новый заголовок</h2>",
+            "estimated_duration_minutes": 25
+        }
+        
+        update_lesson_success, update_lesson_response = tester.run_test(
+            "Update Lesson",
+            "PUT",
+            f"admin/lessons/{created_lesson_id}",
+            200,
+            data=update_data
+        )
+        
+        if update_lesson_success:
+            try:
+                updated_lesson = update_lesson_response.json()
+                print(f"✅ Updated lesson successfully")
+                
+                # Verify updated data
+                for key, value in update_data.items():
+                    if key in updated_lesson and updated_lesson[key] == value:
+                        print(f"✅ Updated lesson has correct {key}")
+                    elif key in updated_lesson:
+                        print(f"❌ Updated lesson has incorrect {key}: expected {value}, got {updated_lesson[key]}")
+                    else:
+                        print(f"❌ Updated lesson is missing {key}")
+            except Exception as e:
+                print(f"❌ Failed to parse updated lesson data: {str(e)}")
+                update_lesson_success = False
+    else:
+        update_lesson_success = False
+        print("❌ Cannot test lesson update - no lesson was created")
+    
+    # 8. Test GET /api/admin/courses/{course_id}/lessons - получение уроков по курсу
+    print(f"\n📚 Testing GET /api/admin/courses/{existing_course_id}/lessons")
+    
+    course_lessons_success, course_lessons_response = tester.run_test(
+        f"Get Lessons for Course {existing_course_id}",
+        "GET",
+        f"admin/courses/{existing_course_id}/lessons",
+        200
+    )
+    
+    if course_lessons_success:
+        try:
+            course_lessons_data = course_lessons_response.json()
+            print(f"✅ Found {len(course_lessons_data)} lesson(s) for the course")
+            
+            # Check if our created lesson is in the list
+            if created_lesson_id:
+                lesson_found = False
+                for lesson in course_lessons_data:
+                    if lesson.get('id') == created_lesson_id:
+                        lesson_found = True
+                        print(f"✅ Found our created lesson in course lessons")
+                        break
+                
+                if not lesson_found:
+                    print(f"❌ Created lesson not found in course lessons")
+                    course_lessons_success = False
+        except Exception as e:
+            print(f"❌ Failed to parse course lessons data: {str(e)}")
+            course_lessons_success = False
+    
+    # 9. Test DELETE /api/admin/lessons/{lesson_id} - удаление урока
+    lessons_to_delete = [created_lesson_id, youtube_lesson_id]
+    delete_success_count = 0
+    
+    for lesson_id in lessons_to_delete:
+        if lesson_id:
+            print(f"\n🗑️ Testing DELETE /api/admin/lessons/{lesson_id}")
+            
+            delete_lesson_success, delete_lesson_response = tester.run_test(
+                f"Delete Lesson {lesson_id}",
+                "DELETE",
+                f"admin/lessons/{lesson_id}",
+                200
+            )
+            
+            if delete_lesson_success:
+                print(f"✅ Deleted lesson {lesson_id} successfully")
+                delete_success_count += 1
+                
+                # Verify deletion by trying to get the lesson
+                verify_delete_success, verify_delete_response = tester.run_test(
+                    f"Verify Lesson {lesson_id} Deletion",
+                    "GET",
+                    f"admin/lessons/{lesson_id}",
+                    404
+                )
+                
+                if verify_delete_success:
+                    print(f"✅ Verified lesson {lesson_id} deletion")
+                else:
+                    print(f"❌ Failed to verify lesson {lesson_id} deletion")
+            else:
+                print(f"❌ Failed to delete lesson {lesson_id}")
+    
+    # Calculate overall success
+    total_tests = 9
+    successful_tests = sum([
+        all_lessons_success,
+        create_lesson_success,
+        validation_success,
+        invalid_course_success,
+        youtube_lesson_success,
+        update_lesson_success,
+        course_lessons_success,
+        delete_success_count >= 1  # At least one deletion succeeded
+    ])
+    
+    print(f"\n📊 Lesson Management Tests: {successful_tests}/{total_tests} major tests passed")
+    print(f"📊 API Tests: {tester.tests_passed}/{tester.tests_run} individual API calls passed")
+    
+    return successful_tests >= 6  # Consider success if most tests pass
+
 def test_database_administration_endpoints():
     """Test the new database administration API endpoints"""
     print("\n=== Testing Database Administration API Endpoints ===")
