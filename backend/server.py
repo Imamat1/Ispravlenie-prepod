@@ -1017,6 +1017,80 @@ async def delete_team_member(member_id: str, current_admin: dict = Depends(requi
         raise HTTPException(status_code=404, detail="Team member not found")
     return {"message": "Team member deleted successfully"}
 
+# ====================================================================
+# TEACHER MANAGEMENT ENDPOINTS
+# ====================================================================
+
+@api_router.get("/admin/teachers", response_model=List[Teacher])
+async def get_admin_teachers(current_admin: dict = Depends(get_current_admin)):
+    """Get all teachers for admin"""
+    teachers = await db_client.get_records("teachers", order_by="name")
+    return [Teacher(**teacher) for teacher in teachers]
+
+@api_router.post("/admin/teachers", response_model=Teacher)
+async def create_teacher(teacher_data: TeacherCreate, current_admin: dict = Depends(get_current_admin)):
+    """Create new teacher"""
+    try:
+        # Check if teacher with this email already exists
+        existing_teacher = await db_client.find_one("teachers", {"email": teacher_data.email})
+        if existing_teacher:
+            raise HTTPException(status_code=400, detail="Teacher with this email already exists")
+        
+        teacher_dict = teacher_data.dict()
+        teacher_obj = Teacher(**teacher_dict)
+        created_teacher = await db_client.create_record("teachers", teacher_obj.dict())
+        return Teacher(**created_teacher)
+    except Exception as e:
+        logger.error(f"Error creating teacher: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to create teacher: {str(e)}")
+
+@api_router.put("/admin/teachers/{teacher_id}", response_model=Teacher)
+async def update_teacher(
+    teacher_id: str, 
+    teacher_data: TeacherCreate, 
+    current_admin: dict = Depends(get_current_admin)
+):
+    """Update teacher"""
+    try:
+        teacher = await db_client.get_record("teachers", "id", teacher_id)
+        if not teacher:
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        
+        # Check if email is being changed and if new email already exists
+        if teacher_data.email != teacher.get("email"):
+            existing_teacher = await db_client.find_one("teachers", {"email": teacher_data.email})
+            if existing_teacher and existing_teacher.get("id") != teacher_id:
+                raise HTTPException(status_code=400, detail="Teacher with this email already exists")
+        
+        update_data = teacher_data.dict()
+        update_data["updated_at"] = datetime.utcnow().isoformat()
+        
+        updated_teacher = await db_client.update_record("teachers", "id", teacher_id, update_data)
+        return Teacher(**updated_teacher)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating teacher: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to update teacher: {str(e)}")
+
+@api_router.delete("/admin/teachers/{teacher_id}")
+async def delete_teacher(teacher_id: str, current_admin: dict = Depends(require_admin_role)):
+    """Delete teacher"""
+    try:
+        teacher = await db_client.get_record("teachers", "id", teacher_id)
+        if not teacher:
+            raise HTTPException(status_code=404, detail="Teacher not found")
+        
+        success = await db_client.delete_record("teachers", "id", teacher_id)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to delete teacher")
+        return {"message": "Teacher deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting teacher: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete teacher: {str(e)}")
+
 # Include the router in the main app
 app.include_router(api_router)
 
